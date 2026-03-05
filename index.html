@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anatomie Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .hidden { display: none; }
+        .card-active { display: block; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans pb-20">
+
+    <header class="bg-white shadow-sm p-4 sticky top-0 z-10">
+        <h1 id="view-title" class="text-xl font-bold text-center">Muskel Lernkartei</h1>
+        <div id="search-container" class="mt-2">
+            <input type="text" id="search-input" placeholder="Suche nach Name, Funktion, Nerv..." 
+                   class="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+    </header>
+
+    <main id="app-content" class="p-4">
+        </main>
+
+    <nav class="fixed bottom-0 w-full bg-white border-t flex justify-around p-3 shadow-lg">
+        <button onclick="showLexikon()" class="flex flex-col items-center">
+            <span class="text-sm">Lexikon</span>
+        </button>
+        <button onclick="startQuiz()" class="flex flex-col items-center">
+            <span class="text-sm">Quiz</span>
+        </button>
+        <button onclick="showProgress()" class="flex flex-col items-center">
+            <span class="text-sm">Fortschritt</span>
+        </button>
+    </nav>
+
+    <script>
+        let alleMuskeln = [];
+        let quizListe = [];
+        let aktuellerQuizIndex = 0;
+
+        // Daten beim Start laden
+        async function loadData() {
+            try {
+                const response = await fetch('muskeln.json');
+                alleMuskeln = await response.json();
+                showLexikon();
+            } catch (e) {
+                console.error("Daten konnten nicht geladen werden. Prüfe die muskeln.json");
+            }
+        }
+
+        // LEXIKON MIT TIEFER SUCHE
+        function showLexikon() {
+            const container = document.getElementById('app-content');
+            const searchVal = document.getElementById('search-input').value.toLowerCase();
+            document.getElementById('view-title').innerText = "Lexikon";
+            
+            let html = '<div class="space-y-4">';
+            const gefiltert = alleMuskeln.filter(m => 
+                m.name.toLowerCase().includes(searchVal) || 
+                m.funktion.toLowerCase().includes(searchVal) ||
+                m.innervation.toLowerCase().includes(searchVal)
+            );
+
+            gefiltert.forEach(m => {
+                html += `
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                    <h3 class="font-bold text-lg text-blue-700">${m.name}</h3>
+                    <div class="mt-2 text-sm grid grid-cols-1 gap-1">
+                        <p><strong>Ursprung:</strong> ${m.ursprung}</p>
+                        <p><strong>Ansatz:</strong> ${m.ansatz}</p>
+                        <p><strong>Innervation:</strong> ${m.innervation}</p>
+                        <p><strong>Funktion:</strong> ${m.funktion}</p>
+                        ${m.besonderheit ? `<p class="italic text-gray-600"><strong>Note:</strong> ${m.besonderheit}</p>` : ''}
+                    </div>
+                    <div class="mt-3 bg-gray-200 h-40 flex items-center justify-center rounded overflow-hidden">
+                        <img src="${m.bild}" alt="${m.name}" onerror="this.parentElement.innerHTML='[Bild Platzhalter]'" class="object-contain h-full">
+                    </div>
+                </div>`;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        // QUIZ LOGIK (Spaced Repetition Light)
+        function startQuiz() {
+            document.getElementById('view-title').innerText = "Quiz";
+            // Lade nicht gekonnte Muskeln aus dem LocalStorage
+            const gelernt = JSON.parse(localStorage.getItem('anatomie_fortschritt') || "{}");
+            quizListe = alleMuskeln.filter(m => !gelernt[m.id]);
+            
+            if(quizListe.length === 0) {
+                document.getElementById('app-content').innerHTML = "<p class='text-center mt-10'>Glückwunsch! Du kannst alle Muskeln. <br><button onclick='resetProgress()' class='text-blue-500 underline'>Reset</button></p>";
+                return;
+            }
+            
+            aktuellerQuizIndex = 0;
+            renderQuizCard();
+        }
+
+        function renderQuizCard() {
+            const m = quizListe[aktuellerQuizIndex];
+            const container = document.getElementById('app-content');
+            container.innerHTML = `
+                <div class="bg-white p-6 rounded-2xl shadow-xl text-center">
+                    <div class="h-48 bg-gray-100 mb-4 rounded flex items-center justify-center">
+                         <img src="${m.bild}" onerror="this.parentElement.innerHTML='[Bild Platzhalter]'" class="h-full">
+                    </div>
+                    <h2 class="text-2xl font-bold mb-6">Welcher Muskel ist das?</h2>
+                    
+                    <button onclick="this.nextElementSibling.classList.toggle('hidden')" class="bg-gray-200 px-4 py-2 rounded mb-4 w-full">Lösung anzeigen</button>
+                    
+                    <div class="hidden text-left border-t pt-4 mb-6">
+                        <p class="text-xl font-bold text-blue-600">${m.name}</p>
+                        <p><strong>U:</strong> ${m.ursprung}</p>
+                        <p><strong>A:</strong> ${m.ansatz}</p>
+                        <p><strong>F:</strong> ${m.funktion}</p>
+                    </div>
+
+                    <div class="flex gap-4">
+                        <button onclick="answer(false)" class="flex-1 bg-red-100 text-red-600 font-bold py-3 rounded-xl border border-red-200">KANN ICH NICHT</button>
+                        <button onclick="answer(true)" class="flex-1 bg-green-100 text-green-600 font-bold py-3 rounded-xl border border-green-200">KANN ICH</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function answer(isCorrect) {
+            const m = quizListe[aktuellerQuizIndex];
+            if(isCorrect) {
+                let gelernt = JSON.parse(localStorage.getItem('anatomie_fortschritt') || "{}");
+                gelernt[m.id] = true;
+                localStorage.setItem('anatomie_fortschritt', JSON.stringify(gelernt));
+            }
+            
+            aktuellerQuizIndex++;
+            if(aktuellerQuizIndex < quizListe.length) {
+                renderQuizCard();
+            } else {
+                startQuiz(); // Neustart mit den übrig gebliebenen
+            }
+        }
+
+        function resetProgress() {
+            localStorage.removeItem('anatomie_fortschritt');
+            startQuiz();
+        }
+
+        // Event Listener für Suche
+        document.getElementById('search-input').addEventListener('input', showLexikon);
+
+        loadData();
+    </script>
+</body>
+</html>
